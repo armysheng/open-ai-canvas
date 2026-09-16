@@ -1,0 +1,23 @@
+# Apply after docker-compose.deploy.yml and docker-compose.build.yml.
+services:
+  migrate:
+    image: armysheng/open-ai-canvas-backend:${BUILD_COMMIT:?Set BUILD_COMMIT to the release commit}
+  backend:
+    image: armysheng/open-ai-canvas-backend:${BUILD_COMMIT:?Set BUILD_COMMIT to the release commit}
+    environment:
+      CANVAS_UPDATER_SOCKET: ""
+      CANVAS_UPDATER_TOKEN: ""
+      CANVAS_WHISPER_BASE_URL: ${CANVAS_WHISPER_BASE_URL:-}
+    volumes: !override
+      - backend-data:/data
+    cpus: 1.0
+    mem_limit: 2g
+  web:
+    image: armysheng/open-ai-canvas-web:${BUILD_COMMIT:?Set BUILD_COMMIT to the release commit}
+    ports: !override
+      - "127.0.0.1:${BETA_HTTP_PORT:-13001}:3000"
+    mem_limit: 256m
+  postgres:
+    mem_limit: 768m
+  redis:
+    mem_limit: 256m
