@@ -46,6 +46,14 @@ export default defineConfig({
                     minSize: 40 * 1024,
                     groups: [
                         {
+                            // Keep shared interop helpers out of route entries. AntD can
+                            // otherwise import the workspace entry and execute its bootstrap early.
+                            name: "vendor-babel-runtime",
+                            minSize: 0,
+                            test: /node_modules[\\/]@babel[\\/]runtime[\\/]/,
+                            priority: 40,
+                        },
+                        {
                             name: "vendor-react",
                             test: /node_modules[\\/](?:react(?:-dom|-router|-router-dom)?|scheduler|zustand|use-sync-external-store|@tanstack[\\/](?:query-core|react-query))[\\/]/,
                             priority: 30,
