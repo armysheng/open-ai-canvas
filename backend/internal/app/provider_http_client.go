@@ -162,6 +162,20 @@ func getExternalBinary(ctx context.Context, rawURL string) ([]byte, string, erro
 }
 
 func getProviderExternalBinary(ctx context.Context, config providerConfig, rawURL string) ([]byte, string, error) {
+	target, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, "", err
+	}
+	if !target.IsAbs() {
+		base, err := url.Parse(strings.TrimSpace(config.BaseURL))
+		if err != nil {
+			return nil, "", err
+		}
+		target = base.ResolveReference(target)
+	}
+	// Resolve before checking the origin so authenticated relative result paths
+	// retain provider credentials while external media hosts receive none.
+	rawURL = target.String()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, "", err

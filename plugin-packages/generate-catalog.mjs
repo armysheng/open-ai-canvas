@@ -591,7 +591,7 @@ add({
 });
 
 add({
-  id: "xai-video", providerId: "xai-video", name: "xAI Video", vendor: "xAI", capability: "video",
+  id: "xai-video", providerId: "xai-video", name: "xAI Video", vendor: "xAI", capability: "video", version: "2.0.1",
   baseUrl: "https://api.x.ai", auth: bearer, params: videoParams, requiresPublicMediaUrls: true,
   validations: [
     { assert: { $lte: [len(filter(ref("request.images"), "media", { $in: [ref("media.role"), ["first_frame", "last_frame"]] })), 1] }, message: "xAI Video 最多支持一个帧输入，当前 profile 不支持尾帧" },
@@ -603,7 +603,12 @@ add({
     image: conditional(gt(len(mediaWithRoles("request.images", ["first_frame", ""])), 0), { url: firstMediaFieldWithRoles("request.images", ["first_frame", ""], "value") }),
     reference_images: omit(map(filter(ref("request.images"), "media", { $in: [ref("media.role"), ["reference_image", "subject_reference", "style_reference"]] }), "media", { url: ref("media.value") }))
   }),
-  poll: { method: "GET", path: "/v1/videos/{{taskId}}" }, response: asyncResponse("video")
+  poll: { method: "GET", path: "/v1/videos/{{taskId}}" },
+  response: asyncResponse("video", {
+    taskId: coalesce(ref("response.request_id"), ref("response.id"), ref("response.task_id"), ref("response.taskId"), ref("response.data.request_id"), ref("response.data.id"), ref("taskId")),
+    videos: coalesce(ref("response.video.url"), ref("response.video_url"), ref("response.videoUrl"), ref("response.result_url"), ref("response.url"), ref("response.data.video_url"), ref("response.output.url"))
+  }),
+  notes: "2.0.1 支持创建响应的 request_id 与完成响应的 video.url。相对结果地址（如 /v1/videos/request-id/content）由宿主按渠道 Base URL 解析；同源下载保留渠道鉴权，跨域媒体不携带渠道凭据。需要宿主支持相对结果地址下载。部署后可查询已有上游任务并恢复结果，无需重新提交生成。"
 });
 
 add({
@@ -963,7 +968,7 @@ function manifestFor(spec) {
     apiVersion: "yingce.plugin/v2",
     id: spec.id,
     name: spec.name,
-    version: "2.0.0",
+    version: spec.version || "2.0.0",
     author: `${spec.vendor} / 影策`,
     description: `${spec.name} 独立请求协议插件。`,
     documentation: `# ${spec.name}\n\n完整字段、映射、响应、鉴权和兼容边界见包内 README.md 与 docs/interface.md。\n\n## 影策运行时合同\n\n用户只操作统一的文本、图片或视频能力；插件负责把统一请求转换为 ${spec.name} 上游协议。`,

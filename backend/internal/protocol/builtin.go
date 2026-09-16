@@ -266,7 +266,7 @@ func newAPIChannel1Adapter() Adapter {
 func xAIVideosAdapter() Adapter {
 	info := metadata("xai-video", "xAI 官方视频", "xAI", CapabilityVideo, "POST /v1/videos/generations", "GET /v1/videos/{request_id}", "application/json")
 	info.Parameters = videoParams()
-	return videoAdapter(info, func(r GenerationRequest) (RequestSpec, error) {
+	return builtinAdapter{info: info, create: func(r GenerationRequest) (RequestSpec, error) {
 		body := map[string]any{"model": r.Model, "prompt": r.Prompt, "duration": defaultInt(r.Duration, 6), "aspect_ratio": defaultValue(r.AspectRatio, "16:9"), "resolution": defaultValue(r.Resolution, "720p")}
 		frameImages, referenceImages, unspecifiedImages := splitVideoImages(r.Images)
 		if len(frameImages) > 0 && len(referenceImages) > 0 {
@@ -293,7 +293,12 @@ func xAIVideosAdapter() Adapter {
 			body["reference_images"] = refs
 		}
 		return jsonSpec(http.MethodPost, "/v1/videos/generations", body), nil
-	})
+	}, parseCreate: parseAsyncCreate,
+		poll: func(c PollContext) (RequestSpec, error) {
+			return RequestSpec{Method: http.MethodGet, Path: "/v1/videos/" + url.PathEscape(c.TaskID)}, nil
+		},
+		parsePoll: parseXAIVideoPoll,
+	}
 }
 
 func arkVideosAdapter() Adapter {

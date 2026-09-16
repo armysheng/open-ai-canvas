@@ -457,20 +457,27 @@ func (s *Service) processCanvasGenerationTask(ctx context.Context, userID string
 }
 
 type providerMediaHydrationPolicy struct {
-	requireURL bool
-	preferURL  bool
+	requireURL           bool
+	preferURL            bool
+	allowInlineImageData bool
 }
 
 func providerMediaHydrationPolicyFor(ctx context.Context, input canvasGenerationInput) providerMediaHydrationPolicy {
 	policy := providerMediaHydrationPolicy{preferURL: providerPrefersMediaURLs(input.Config.InterfaceType, input)}
 	switch strings.TrimSpace(input.Config.InterfaceType) {
-	case string(model.ChannelInterfaceNewAPIVideo), string(model.ChannelInterfaceNewAPIChannel1), string(model.ChannelInterfaceNewAPIChannel2), string(model.ChannelInterfaceVolcengineArkVideo), string(model.ChannelInterfaceMiniMaxVideo):
+	case string(model.ChannelInterfaceNewAPIVideo), string(model.ChannelInterfaceNewAPIChannel1), string(model.ChannelInterfaceNewAPIChannel2), string(model.ChannelInterfaceVolcengineArkVideo), string(model.ChannelInterfaceMiniMaxVideo), string(model.ChannelInterfaceXAIVideo):
 		policy.requireURL = true
 		policy.preferURL = true
 	}
 	if adapter, ok := protocolAdapterForContext(ctx, input.Config.InterfaceType); ok && adapter.Metadata().RequiresPublicMediaURLs {
 		policy.requireURL = true
 		policy.preferURL = true
+	}
+	// xAI's image-to-video and reference-to-video APIs explicitly accept
+	// base64 data URIs. Local image resources can therefore stay inline when
+	// no public resource URL is configured; videos and audio still require URL.
+	if strings.TrimSpace(input.Config.InterfaceType) == string(model.ChannelInterfaceXAIVideo) {
+		policy.allowInlineImageData = true
 	}
 	if input.Mask != nil {
 		policy.requireURL = false
@@ -759,6 +766,9 @@ func (s *Service) hydrateProviderMedia(userID string, media *providerMedia, poli
 		return errors.New("任务参考资源尚未上传完成")
 	}
 	useObjectURL := policy.requireURL || (policy.preferURL && resourceUsesObjectStorage(resource))
+	if policy.allowInlineImageData && resource.Kind == "image" && resource.Provider == "local" {
+		useObjectURL = false
+	}
 	if useObjectURL {
 		signedURL, err := s.directResourceURL(resource, time.Now().Add(providerResourceURLTTL))
 		if err != nil {
@@ -773,7 +783,7 @@ func (s *Service) hydrateProviderMedia(userID string, media *providerMedia, poli
 		media.DurationMs = resource.DurationMs
 		return nil
 	}
-	if strings.HasPrefix(strings.TrimSpace(media.DataURL), "data:") {
+	if strings.HasPrefix(strings.TrimSpace(media.DataURL), "data:") && !policy.allowInlineImageData {
 		return nil
 	}
 	resource, body, err := s.OpenResource(userID, resourceID)
@@ -795,6 +805,7 @@ func (s *Service) hydrateProviderMedia(userID string, media *providerMedia, poli
 	}
 	mimeType := normalizedMediaMimeType(firstNonEmpty(media.MimeType, resource.MimeType), data)
 	media.DataURL = dataURL(mimeType, data)
+	media.URL = ""
 	media.MimeType = mimeType
 	media.Bytes = int64(len(data))
 	media.Width = resource.Width

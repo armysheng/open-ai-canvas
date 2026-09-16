@@ -1,0 +1,56 @@
+---
+title: 影策产品分支维护与内测发布
+description: 基于 ddcat-ai/open-ai-canvas 的影策源码分支、品牌定制和社区更新流程
+---
+
+# 影策产品分支维护与内测发布
+
+## 当前源码基线
+
+本产品分支 `codex/product` 从 `ddcat-ai/open-ai-canvas` 的提交
+`a840e552d570bdfa1dd0e2cda65a0891f8ee6b3e` 建立。该提交是 2026-09-15 下载的
+源码压缩包 comment 中记录的提交，也是当前工作目录逐文件校验得到的共同祖先。
+
+远程约定：`upstream` 只读指向社区仓库；发布时将自有 Git 仓库配置为 `origin`。
+影策的品牌、Logo、SEO、登录页媒体和皮肤通过站点外观配置与独立资源维护，保留
+`yingce.plugin/v1/v2`、Go module、数据库表和 API/storage 技术标识，减少合并社区
+更新时的冲突。
+
+## 社区更新流程
+
+1. 定期抓取 `upstream/main`，在临时集成分支合并或 rebase 社区更新。
+2. 先验证数据库迁移、登录与账号隔离、生成任务/SSE 恢复、资源上传下载、导出和
+   额度边界，再把集成分支合入 `codex/product`。
+3. 将品牌资源和产品专属 provider 变更保持为独立提交；不要在社区同步提交中改写
+   公共 API、插件合同或数据库技术名称。
+4. 为每次内测构建固定提交 tag；前端、后端和 migrate 镜像必须来自同一提交。发布
+   前检查 `VERSION`、tag、CHANGELOG 标题和镜像 digest 一致。
+
+## 源码构建发布
+
+生产源码构建必须同时使用：
+
+```sh
+docker compose --env-file .env \
+  -f docker-compose.deploy.yml -f docker-compose.build.yml \
+  build migrate backend web
+docker compose --env-file .env \
+  -f docker-compose.deploy.yml -f docker-compose.build.yml \
+  up -d --remove-orphans --wait --wait-timeout 600
+```
+
+只使用 `docker-compose.deploy.yml` 会切换到社区 GHCR 镜像。当前在线 updater 默认
+检查 `ddcat-ai/open-ai-canvas`，并只加载 deploy compose，首版邀请内测暂不安装它。
+若以后启用，必须同时持久化 `CANVAS_UPDATER_REPOSITORY`、自有镜像 owner、compose
+下载地址和 build overlay，否则升级可能覆盖影策源码构建。
+
+## 邀请内测前阻塞项
+
+- `backend/Dockerfile` 最终运行层没有 FFmpeg/ffprobe；成片渲染、字幕预处理和播放
+  转码前必须在自有镜像或宿主 PATH 提供它们。
+- 生产 compose 没有 Whisper 服务或 `CANVAS_WHISPER_BASE_URL`。开放字幕转写前必须
+  接入可达的 Whisper 服务并完成真实任务验收。
+- 首个管理员应在内网完成初始化，再通过后台用户管理人工创建受邀账号；确认数据库
+  `registration` 设置已关闭公开注册。
+- 必须完成多账号隔离、真实图片/视频生成、断线恢复、存储、导出、额度/成本上限和
+  备份恢复的发布镜像冒烟，并补做品牌配置保存、刷新、主题、Logo 和 SEO 验收。

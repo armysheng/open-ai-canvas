@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## xAI 视频结果解析与下载
+
+- 独立官方插件 `xai-video` 更新为 2.0.1，实际安装包映射补齐创建响应 `request_id` 与完成响应 `video.url`；仅更新内置适配器不会改变该插件运行路径，部署时须安装更新后的包。
+- [x] 直接加载 `xai-video.yingce-plugin` 的回归覆盖请求 ID、真实嵌套视频响应及临时媒体标记；完整插件目录文档/manifest 合同校验通过。
+- xAI 专属解析器支持轮询完成响应的 `video.url`；宿主按渠道 Base URL 解析相对媒体地址，同源下载保留鉴权与自定义头，跨域下载不携带渠道凭据。
+- [x] 本地部署后回查已有失败视频任务，原上游任务 ID 保持不变，恢复成功并登记为项目首镜当前产物；资源已持久化，浏览器播放无错误，实测约 10.04 秒、480 × 848，项目仅有一次视频生成任务。
+- [x] `go test ./internal/protocol -count=1` 与 xAI、声明式协议、视频轮询/下载、任务恢复专项回归通过，覆盖嵌套结果、已有平铺结果、失败/空结果状态及同源/跨域下载鉴权边界；使用本地模拟服务，不代表真实任务恢复已验收。
+
 ## 素材 bytes 数字合同
 
 - 修复后端将 `bytes: null` 按数字零通过校验的问题，避免保存后被前端素材合同拒绝；图片、视频、音频、模型素材均覆盖。
@@ -507,7 +515,7 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 ## 对象存储优先发送媒体 URL
 
 - 开启对象存储后，参考图、视频、音频发给上游时：协议支持 URL 就优先发对象存储签名链接；协议必须传文件字节时仍走 Base64 或 multipart。不会在上游失败后再自动重发一次生成。
-- 强制 URL：NewAPI 系列、火山方舟视频、MiniMax 视频，以及声明需要公网媒体 URL 的插件协议。优先 URL：chat-completion、openai-response、claude-api、Grok 图片、火山方舟图片、xAI/Novita/Grok/Seedance 视频等。Gemini 图片、Gemini Veo、带蒙版的 OpenAI 图片编辑继续走字节。
+- 强制 URL：NewAPI 系列、火山方舟视频、MiniMax 视频，以及声明需要公网媒体 URL 的插件协议。xAI 视频是例外：官方 image-to-video/reference-to-video 接受 data URI，宿主对已归属的本地图片资源可内联，视频和音频仍强制 URL。优先 URL：chat-completion、openai-response、claude-api、Grok 图片、火山方舟图片、Novita/Grok/Seedance 视频等。Gemini 图片、Gemini Veo、带蒙版的 OpenAI 图片编辑继续走字节。
 - 本地资源在“优先 URL”协议下仍读成 Base64；对象存储资源签发失败、资源不存在或未就绪会直接报错，不会伪装成“不支持 URL”。存储桶不必公开读，使用短期签名链接即可。
 - [x] 后端专项测试覆盖协议策略、OSS 强制 URL、本地强制 URL，以及 preferURL 时对象存储走签名 URL、本地回退 Base64。
 - [ ] 用户浏览器验收：开启 OSS/COS/七牛/S3 后，图生图或视频参考素材应发对象存储 URL；Gemini 或蒙版编辑仍发文件字节。签名失败不能变成静默回退 Base64。

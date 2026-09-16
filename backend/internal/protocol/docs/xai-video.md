@@ -21,7 +21,7 @@ Content-Type: application/json
 
 {{PARAMETERS}}
 
-单图结构：`"image":{"url":"..."}`；多图结构：`"reference_images":[{"url":"..."}]`。URL 或 data URL 是否被具体模型接受，应在调用前验证。
+单图结构：`"image":{"url":"..."}`；多图结构：`"reference_images":[{"url":"..."}]`。xAI 官方的 image-to-video 与 reference-to-video 均接受公开 URL、base64 data URI 和 `file_id`；影策在本地资源无公网地址时，只对已归属的图片资源使用 data URI，视频和音频仍按 URL 要求处理。
 
 ## 请求示例
 
@@ -41,7 +41,11 @@ curl "{channel_base_url}/v1/videos/generations" \
 
 ## 创建、查询与下载
 
-创建响应需包含 `request_id` 或其他统一解析器支持的任务字段。查询完成后从视频数组或 `video_url/result_url/url` 读取媒体。当前没有 cancel adapter；关闭宿主弹窗不会取消上游生成。结果 URL 应及时转存，不能假定永久有效。
+创建响应需包含 `request_id` 或其他统一解析器支持的任务字段。查询完成后优先读取 xAI 的 `video.url`，也支持视频数组或 `video_url/result_url/url`。例如 `{"status":"done","video":{"url":"/v1/videos/request-id/content"}}` 会进入正常媒体下载与持久化流程。
+
+相对结果地址由宿主按渠道 Base URL 解析；`/v1/...` 从该域名根路径解析，不重复追加 Base URL 中的 `/v1`。同源下载保留渠道鉴权与自定义头，跨域媒体地址不携带渠道凭据，仍受宿主出站校验约束。空结果或下载失败保留真实失败状态；已有任务可通过任务中心查询上游并恢复，无需重新提交生成。
+
+当前没有 cancel adapter；关闭宿主弹窗不会取消上游生成。结果 URL 应及时转存，不能假定永久有效。
 
 ## 错误处理
 

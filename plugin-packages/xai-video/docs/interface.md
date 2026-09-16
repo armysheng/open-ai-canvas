@@ -62,10 +62,10 @@
 
 | 映射位置 | 上游路径或转换表达式 |
 | --- | --- |
-| `response.taskId` | `{"$coalesce":[{"$ref":"response.id"},{"$ref":"response.task_id"},{"$ref":"response.taskId"},{"$ref":"response.data.id"},{"$ref":"taskId"}]}` |
+| `response.taskId` | `{"$coalesce":[{"$ref":"response.request_id"},{"$ref":"response.id"},{"$ref":"response.task_id"},{"$ref":"response.taskId"},{"$ref":"response.data.request_id"},{"$ref":"response.data.id"},{"$ref":"taskId"}]}` |
 | `response.status` | `{"$coalesce":[{"$ref":"response.status"},{"$ref":"response.state"},{"$ref":"response.data.status"},"pending"]}` |
 | `response.message` | `{"$coalesce":[{"$ref":"response.error.message"},{"$ref":"response.message"},{"$ref":"response.fail_reason"}]}` |
-| `response.videos` | `{"$coalesce":[{"$ref":"response.video_url"},{"$ref":"response.videoUrl"},{"$ref":"response.result_url"},{"$ref":"response.url"},{"$ref":"response.data.video_url"},{"$ref":"response.output.url"}]}` |
+| `response.videos` | `{"$coalesce":[{"$ref":"response.video.url"},{"$ref":"response.video_url"},{"$ref":"response.videoUrl"},{"$ref":"response.result_url"},{"$ref":"response.url"},{"$ref":"response.data.video_url"},{"$ref":"response.output.url"}]}` |
 | `response.errorPaths[0]` | `"error.code"` |
 | `response.resultEphemeral` | `true` |
 
@@ -75,7 +75,7 @@
 
 ## 兼容边界
 
-该包只代表上述线协议 profile；同一品牌的其他 endpoint、云区域或网关包装必须使用独立插件，不能根据模型名猜测。
+2.0.1 支持创建响应的 request_id 与完成响应的 video.url。相对结果地址（如 /v1/videos/request-id/content）由宿主按渠道 Base URL 解析；同源下载保留渠道鉴权，跨域媒体不携带渠道凭据。需要宿主支持相对结果地址下载。部署后可查询已有上游任务并恢复结果，无需重新提交生成。
 
 <!-- YINGCE_MANIFEST_CONTRACT_START -->
 ## Manifest 完整接口定义
@@ -87,7 +87,7 @@
   "apiVersion": "yingce.plugin/v2",
   "id": "xai-video",
   "name": "xAI Video",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "xAI / 影策",
   "description": "xAI Video 独立请求协议插件。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -449,6 +449,9 @@
           "taskId": {
             "$coalesce": [
               {
+                "$ref": "response.request_id"
+              },
+              {
                 "$ref": "response.id"
               },
               {
@@ -456,6 +459,9 @@
               },
               {
                 "$ref": "response.taskId"
+              },
+              {
+                "$ref": "response.data.request_id"
               },
               {
                 "$ref": "response.data.id"
@@ -494,6 +500,9 @@
           },
           "videos": {
             "$coalesce": [
+              {
+                "$ref": "response.video.url"
+              },
               {
                 "$ref": "response.video_url"
               },
