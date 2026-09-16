@@ -9,11 +9,14 @@ const selectionControllerSource = readFileSync(resolve(import.meta.dir, "../src/
 describe("canvas node drag overlays", () => {
     test("hides floating editors and selection controls for the whole drag preview", () => {
         expect(projectSource).toContain("const isCanvasNodeMoving = isNodeDragging || Boolean(dragPreview?.nodeIds.size);");
-        expect(projectSource).toContain("dialogNode.type !== CanvasNodeType.Drawing && !selectionBox && !isCanvasNodeMoving");
+        const dialogVisibility = projectSource.match(/\{dialogNode\s*&&([\s\S]*?)\?\s*\(\s*<CanvasNodePanelOverlay/)?.[1] || "";
+        expect(dialogVisibility).toContain("dialogNode.type !== CanvasNodeType.Drawing");
+        expect(dialogVisibility).toContain("dialogNode.type !== CanvasNodeType.Panorama");
+        expect(dialogVisibility).toMatch(/!selectionBox\s*&&\s*!isCanvasNodeMoving/);
         expect(projectSource).not.toContain("angleNode?.metadata?.content && !isCanvasNodeMoving");
         expect(projectSource).toContain("emotionNode?.metadata?.content && !isCanvasNodeMoving");
         expect(projectSource).toContain("selectedNodeBounds && !selectionBox && !isCanvasNodeMoving");
-        expect(projectSource).toContain("node={isCanvasNodeMoving || nodeImageSettingsOpen || emotionNodeId ? null : toolbarNode}");
+        expect(projectSource).toContain("node={isCanvasNodeMoving || nodeImageSettingsOpen || emotionNodeId || angleNodeId ? null : toolbarNode}");
         expect(projectSource).toContain("onNodeDragEnd: handleNodeDragEnd");
         expect(projectSource).toContain("setDialogNodeId(node.id);");
         expect(selectionControllerSource).toContain("if (clickedNodeId) onNodeDragEnd?.(clickedNodeId);");

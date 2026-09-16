@@ -10,7 +10,9 @@ test("connection menu omits the header and provides descriptions for every optio
     expect(component).not.toContain("ChevronRight");
     expect(component).not.toContain("absolute inset-x-8 top-0 h-px");
     const options = component.match(/<ConnectionCreateOption [^\n]+/g) || [];
-    expect(options).toHaveLength(8);
+    expect(options.map((option) => option.match(/onCreate\(CanvasNodeType\.(\w+)\)/)?.[1])).toEqual([
+        "Text", "Script", "Image", "Config", "Drawing", "Video", "Audio",
+    ]);
     for (const option of options) expect(option).toMatch(/description="[^"]+"/);
 });
 
