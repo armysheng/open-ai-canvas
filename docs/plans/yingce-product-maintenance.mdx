@@ -50,7 +50,7 @@ docker compose --env-file .env \
 
 ## 本次邀请内测部署
 
-访问域名为 `m.iaigc.fun`。独立 Compose 项目名为 `yingce-beta`，web 仅绑定
+访问域名为 `movie.iaigc.fun`。独立 Compose 项目名为 `yingce-beta`，web 仅绑定
 `127.0.0.1:13001`，宿主 Nginx 终止 HTTPS。数据库、Redis 和上传数据使用该项目自己的卷。
 启动时在上述两个 compose 后增加 `-f docker-compose.beta.yml`；所有后续运维命令都使用
 同样的三个文件与 `-p yingce-beta`。第三个文件固定自有镜像提交标签、资源限制并移除 updater 挂载。
@@ -65,9 +65,12 @@ docker compose -p yingce-beta --env-file "$BETA_ENV_FILE" \
 ```
 
 `BETA_ENV_FILE` 指向服务器受限的环境配置文件（权限 600），包含数据库凭据、构建信息、
-`CANVAS_CORS_ORIGINS=https://m.iaigc.fun` 和关闭注册设置。它及管理员初始凭据均不进入 Git。
+`CANVAS_CORS_ORIGINS=https://movie.iaigc.fun` 和关闭注册设置。它及管理员初始凭据均不进入 Git。
 Nginx 模板位于 `deploy/nginx-beta.conf`；证书签发前只使用 `nginx-beta-bootstrap.conf`
 开放 ACME 验证目录，业务路由返回 503。DNS 生效、证书签发及账号初始化后再切换正式模板。
+当前主域名已完成 DNS 与 HTTPS 接入。
+将 `deploy/certbot-renew-yingce.sh` 以权限 755 安装到 Certbot 的 deploy hooks 目录，
+仅在该站证书续期成功后检查并 reload Nginx。主域名续期 dry-run 已通过。
 
 已有本机工作台数据继续保留；云端实例使用全新数据库。模型渠道需要单独配置与验收。
 字幕转写通过后台功能开关关闭，待 Whisper 可用后再开放。管理员可通过后台人工创建受邀用户。
@@ -79,7 +82,7 @@ Nginx 模板位于 `deploy/nginx-beta.conf`；证书签发前只使用 `nginx-be
 
 - 自有后端镜像已安装 FFmpeg/ffprobe。完整成片任务仍需用真实项目验收。
 - 内测 overlay 已透传 `CANVAS_WHISPER_BASE_URL`；尚未接入 Whisper 服务，字幕转写暂不开放。
-- 首个管理员应在内网完成初始化，再通过后台用户管理人工创建受邀账号；确认数据库
-  `registration` 设置已关闭公开注册。
-- 必须完成多账号隔离、真实图片/视频生成、断线恢复、存储、导出、额度/成本上限和
-  备份恢复的发布镜像冒烟，并补做品牌配置保存、刷新、主题、Logo 和 SEO 验收。
+- 首个管理员已在内网完成初始化，公开注册已关闭，通过后台用户管理人工创建受邀账号。
+- 多账号隔离、资源上传下载、备份恢复以及 HTTPS 登录、会话和退出已验证。
+- 尚需真实图片/视频生成、断线恢复、完整导出、额度/成本上限验收，并补做品牌配置
+  保存、刷新、主题、Logo 和 SEO 验收。
