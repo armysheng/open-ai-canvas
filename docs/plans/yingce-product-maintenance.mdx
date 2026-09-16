@@ -13,7 +13,7 @@ description: 基于 ddcat-ai/open-ai-canvas 的影策源码分支、品牌定制
 
 远程约定：`upstream` 只读指向社区仓库；`origin` 指向自有 fork
 `https://github.com/armysheng/open-ai-canvas.git`，默认分支为 `codex/product`。
-影策的品牌、Logo、SEO、登录页媒体和皮肤通过站点外观配置与独立资源维护，保留
+产品名称为「迟早出片」。品牌、Logo、SEO、登录页媒体和皮肤通过站点外观配置与独立资源维护，保留
 `yingce.plugin/v1/v2`、Go module、数据库表和 API/storage 技术标识，减少合并社区
 更新时的冲突。
 
@@ -71,6 +71,10 @@ Nginx 模板位于 `deploy/nginx-beta.conf`；证书签发前只使用 `nginx-be
 当前主域名已完成 DNS 与 HTTPS 接入。
 将 `deploy/certbot-renew-yingce.sh` 以权限 755 安装到 Certbot 的 deploy hooks 目录，
 仅在该站证书续期成功后检查并 reload Nginx。主域名续期 dry-run 已通过。
+
+品牌包位于 `deploy/branding/`，只覆盖名称、明暗 Logo、网页元数据与页脚；当前使用原有
+布局、经典配色及登录媒体。发布脚本先备份外观配置，再通过现有管理员 API 应用品牌，
+不改社区业务代码。已验证新名称在登录页和创作工作台生效。
 
 已有本机工作台数据继续保留；云端实例使用全新数据库。模型渠道需要单独配置与验收。
 字幕转写通过后台功能开关关闭，待 Whisper 可用后再开放。管理员可通过后台人工创建受邀用户。
