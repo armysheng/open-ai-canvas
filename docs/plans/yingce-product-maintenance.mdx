@@ -11,20 +11,24 @@ description: 基于 ddcat-ai/open-ai-canvas 的影策源码分支、品牌定制
 `a840e552d570bdfa1dd0e2cda65a0891f8ee6b3e` 建立。该提交是 2026-09-15 下载的
 源码压缩包 comment 中记录的提交，也是当前工作目录逐文件校验得到的共同祖先。
 
-远程约定：`upstream` 只读指向社区仓库；发布时将自有 Git 仓库配置为 `origin`。
+远程约定：`upstream` 只读指向社区仓库；`origin` 指向自有 fork
+`https://github.com/armysheng/open-ai-canvas.git`，默认分支为 `codex/product`。
 影策的品牌、Logo、SEO、登录页媒体和皮肤通过站点外观配置与独立资源维护，保留
 `yingce.plugin/v1/v2`、Go module、数据库表和 API/storage 技术标识，减少合并社区
 更新时的冲突。
 
 ## 社区更新流程
 
-1. 定期抓取 `upstream/main`，在临时集成分支合并或 rebase 社区更新。
+1. 定期抓取 `upstream/main`，从 `codex/product` 新建临时集成分支，使用 merge 合并社区更新。
+   已发布的产品分支保留历史，不做 rebase。`codex/upstream-integration` 当前仅指向社区版本，
+   尚未合入产品变更，不能直接作为产品发布。
 2. 先验证数据库迁移、登录与账号隔离、生成任务/SSE 恢复、资源上传下载、导出和
    额度边界，再把集成分支合入 `codex/product`。
 3. 将品牌资源和产品专属 provider 变更保持为独立提交；不要在社区同步提交中改写
    公共 API、插件合同或数据库技术名称。
-4. 为每次内测构建固定提交 tag；前端、后端和 migrate 镜像必须来自同一提交。发布
-   前检查 `VERSION`、tag、CHANGELOG 标题和镜像 digest 一致。
+4. 为每次内测构建固定提交引用；前端、后端和 migrate 镜像必须来自同一提交。
+   分别记录两个镜像的 digest。若用社区的 `v*` tag 发布流水线，tag 必须与 `VERSION`
+   及 CHANGELOG 标题一致；本内测源码部署使用显式 `BUILD_VERSION/BUILD_COMMIT/BUILD_TIME`。
 
 ## 源码构建发布
 
@@ -41,15 +45,40 @@ docker compose --env-file .env \
 
 只使用 `docker-compose.deploy.yml` 会切换到社区 GHCR 镜像。当前在线 updater 默认
 检查 `ddcat-ai/open-ai-canvas`，并只加载 deploy compose，首版邀请内测暂不安装它。
-若以后启用，必须同时持久化 `CANVAS_UPDATER_REPOSITORY`、自有镜像 owner、compose
-下载地址和 build overlay，否则升级可能覆盖影策源码构建。
+若以后启用，必须同时持久化 `CANVAS_UPDATER_REPOSITORY`、自有镜像 owner 和 compose
+下载地址，并明确改用自有发布镜像。源码现场构建继续使用完整的 compose overlay。
+
+## 本次邀请内测部署
+
+访问域名为 `m.iaigc.fun`。独立 Compose 项目名为 `yingce-beta`，web 仅绑定
+`127.0.0.1:13001`，宿主 Nginx 终止 HTTPS。数据库、Redis 和上传数据使用该项目自己的卷。
+启动时在上述两个 compose 后增加 `-f docker-compose.beta.yml`；所有后续运维命令都使用
+同样的三个文件与 `-p yingce-beta`。第三个文件固定自有镜像提交标签、资源限制并移除 updater 挂载。
+
+```sh
+docker compose -p yingce-beta --env-file "$BETA_ENV_FILE" \
+  -f docker-compose.deploy.yml -f docker-compose.build.yml -f docker-compose.beta.yml \
+  build backend web
+docker compose -p yingce-beta --env-file "$BETA_ENV_FILE" \
+  -f docker-compose.deploy.yml -f docker-compose.build.yml -f docker-compose.beta.yml \
+  up -d --no-build --wait --wait-timeout 180
+```
+
+`BETA_ENV_FILE` 指向服务器受限的环境配置文件（权限 600），包含数据库凭据、构建信息、
+`CANVAS_CORS_ORIGINS=https://m.iaigc.fun` 和关闭注册设置。它及管理员初始凭据均不进入 Git。
+Nginx 模板位于 `deploy/nginx-beta.conf`；证书签发前只使用 `nginx-beta-bootstrap.conf`
+开放 ACME 验证目录，业务路由返回 503。DNS 生效、证书签发及账号初始化后再切换正式模板。
+
+已有本机工作台数据继续保留；云端实例使用全新数据库。模型渠道需要单独配置与验收。
+字幕转写通过后台功能开关关闭，待 Whisper 可用后再开放。管理员可通过后台人工创建受邀用户。
+
+升级前同时备份 PostgreSQL、资源卷和 `.settings-key`，在独立数据库验证恢复。
+若数据库 schema 改变，回退镜像时必须按备份计划协调恢复数据库；不要只换镜像造成 schema 不匹配。
 
 ## 邀请内测前阻塞项
 
-- `backend/Dockerfile` 最终运行层没有 FFmpeg/ffprobe；成片渲染、字幕预处理和播放
-  转码前必须在自有镜像或宿主 PATH 提供它们。
-- 生产 compose 没有 Whisper 服务或 `CANVAS_WHISPER_BASE_URL`。开放字幕转写前必须
-  接入可达的 Whisper 服务并完成真实任务验收。
+- 自有后端镜像已安装 FFmpeg/ffprobe。完整成片任务仍需用真实项目验收。
+- 内测 overlay 已透传 `CANVAS_WHISPER_BASE_URL`；尚未接入 Whisper 服务，字幕转写暂不开放。
 - 首个管理员应在内网完成初始化，再通过后台用户管理人工创建受邀账号；确认数据库
   `registration` 设置已关闭公开注册。
 - 必须完成多账号隔离、真实图片/视频生成、断线恢复、存储、导出、额度/成本上限和
