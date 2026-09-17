@@ -6,7 +6,7 @@ import { modelCapabilityConfigFor } from "@/lib/model-capabilities";
 import { grokImagePromptLimitError } from "@/lib/grok-image-prompt-limit";
 import { resolveGenerationWorkflowExecution, type GenerationWorkflowExecution } from "@/lib/generation-workflow-execution";
 import { isArkPlanBaseUrl } from "@/lib/seedance-video";
-import { resolveVideoOperation } from "@/lib/model-selection";
+import { resolveModelVideoBooleanOptions, resolveVideoOperation } from "@/lib/model-selection";
 import { logicalModelIDForConfig, modelOptionName, resolveModelChannel, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
@@ -276,36 +276,48 @@ export async function prepareBackendGenerationTask(options: BackendGenerationTas
 
 function backendGenerationTaskInput(options: BackendGenerationTaskOptions, prepared: PreparedGenerationReferences): CreateTaskInput {
     const { projectId, mode, prompt, config, metadata } = options;
+    const requestConfig = normalizedBackendGenerationConfig(config, mode);
     const videoOperation = generationOperation(options);
-    const workflow = resolveGenerationWorkflowExecution(config, mode);
-    const logicalModelId = workflow ? "" : logicalModelIDForConfig(config);
+    const workflow = resolveGenerationWorkflowExecution(requestConfig, mode);
+    const logicalModelId = workflow ? "" : logicalModelIDForConfig(requestConfig);
     return {
         ...(projectId ? { projectId } : {}),
         type: `canvas_${mode}`,
         operation: mode === "video" ? videoOperation : mode,
         prompt,
         ...(workflow ? { provider: workflow.provider } : {}),
-        model: workflow?.taskModel || config.model,
+        model: workflow?.taskModel || requestConfig.model,
         ...(logicalModelId ? { logicalModelId } : {}),
         input: {
             mode,
             prompt,
             ...(workflow ? { execution: workflowPublicExecution(workflow) } : {}),
-            config: backendProviderConfig(config, mode),
-            capabilityOptions: logicalModelId ? logicalCapabilityOptions(config, mode) : undefined,
+            config: backendProviderConfig(requestConfig, mode),
+            capabilityOptions: logicalModelId ? logicalCapabilityOptions(requestConfig, mode) : undefined,
             textHistory: options.textHistory,
             ...(mode === "text" ? { textOptions: { stream: options.streamText !== false, thinking: options.enableThinking === true } } : {}),
             referenceImages: prepared.referenceImages,
             referenceVideos: prepared.referenceVideos,
             referenceAudios: prepared.referenceAudios,
             mask: prepared.mask,
-            metadata: generationMetadata(config, {
+            metadata: generationMetadata(requestConfig, {
                 ...metadata,
                 ...(options.clientOperationId ? { clientOperationId: options.clientOperationId } : {}),
                 ...(options.retryOf ? { retryOf: options.retryOf } : {}),
                 ...(options.attemptGroupId ? { attemptGroupId: options.attemptGroupId } : {}),
             }),
         },
+    };
+}
+
+function normalizedBackendGenerationConfig(config: AiConfig, mode: BackendGenerationMode): AiConfig {
+    if (mode !== "video" || !logicalModelIDForConfig(config)) return config;
+    return {
+        ...config,
+        ...resolveModelVideoBooleanOptions(config, config.model, {
+            videoGenerateAudio: config.videoGenerateAudio,
+            videoWatermark: config.videoWatermark,
+        }),
     };
 }
 

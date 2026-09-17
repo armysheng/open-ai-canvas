@@ -186,6 +186,11 @@ describe("逻辑模型选择", () => {
             videoWatermark: config.videoWatermark,
         })).toEqual({ videoGenerateAudio: "false", videoWatermark: "false" });
 
+        const videoNode = { ...node("video", CanvasNodeType.Video), metadata: { model, generationMode: "video" as const, generateAudio: "true", watermark: "true" } };
+        const generationConfig = buildGenerationConfig(config, videoNode, "video");
+        expect(generationConfig.videoGenerateAudio).toBe("false");
+        expect(generationConfig.videoWatermark).toBe("false");
+
         profile.video!.generateAudio = { supported: true, default: true };
         config.videoGenerateAudio = "false";
         expect(resolveModelVideoBooleanOptions(config, model, {}, {
