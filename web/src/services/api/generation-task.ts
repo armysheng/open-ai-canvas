@@ -311,7 +311,7 @@ function backendGenerationTaskInput(options: BackendGenerationTaskOptions, prepa
 }
 
 function normalizedBackendGenerationConfig(config: AiConfig, mode: BackendGenerationMode): AiConfig {
-    if (mode !== "video" || !logicalModelIDForConfig(config)) return config;
+    if (mode !== "video" || resolveGenerationWorkflowExecution(config, mode)) return config;
     return {
         ...config,
         ...resolveModelVideoBooleanOptions(config, config.model, {
@@ -399,26 +399,27 @@ function backendMediaReference<T extends ReferenceVideo | ReferenceAudio>(media:
 }
 
 export function backendProviderConfig(config: AiConfig, mode: BackendGenerationMode = "image") {
-    const requestConfig = resolveModelRequestConfig(config, config.model);
-    const workflow = resolveGenerationWorkflowExecution(config, mode);
-    if (workflow) return workflowProviderConfig(config, requestConfig, workflow);
+    const normalizedConfig = normalizedBackendGenerationConfig(config, mode);
+    const requestConfig = resolveModelRequestConfig(normalizedConfig, normalizedConfig.model);
+    const workflow = resolveGenerationWorkflowExecution(normalizedConfig, mode);
+    if (workflow) return workflowProviderConfig(normalizedConfig, requestConfig, workflow);
     const generationOptions = {
-        size: config.size,
-        quality: omittedImageQuality(config.quality),
-        transparentBackground: config.transparentBackground,
-        count: config.count,
-        videoSeconds: config.videoSeconds,
-        vquality: config.vquality,
-        videoGenerateAudio: config.videoGenerateAudio,
-        videoWatermark: config.videoWatermark,
-        videoArkPrivateAssetUpload: config.videoArkPrivateAssetUpload,
-        audioVoice: config.audioVoice,
-        audioFormat: config.audioFormat,
-        audioSpeed: config.audioSpeed,
-        audioInstructions: config.audioInstructions,
-        systemPrompt: config.systemPrompt,
+        size: normalizedConfig.size,
+        quality: omittedImageQuality(normalizedConfig.quality),
+        transparentBackground: normalizedConfig.transparentBackground,
+        count: normalizedConfig.count,
+        videoSeconds: normalizedConfig.videoSeconds,
+        vquality: normalizedConfig.vquality,
+        videoGenerateAudio: normalizedConfig.videoGenerateAudio,
+        videoWatermark: normalizedConfig.videoWatermark,
+        videoArkPrivateAssetUpload: normalizedConfig.videoArkPrivateAssetUpload,
+        audioVoice: normalizedConfig.audioVoice,
+        audioFormat: normalizedConfig.audioFormat,
+        audioSpeed: normalizedConfig.audioSpeed,
+        audioInstructions: normalizedConfig.audioInstructions,
+        systemPrompt: normalizedConfig.systemPrompt,
     };
-    if (logicalModelIDForConfig(config)) return generationOptions;
+    if (logicalModelIDForConfig(normalizedConfig)) return generationOptions;
     return {
         channelId: requestConfig.channelId,
         apiFormat: requestConfig.apiFormat,
@@ -428,8 +429,8 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
         secretKey: requestConfig.secretKey,
         model: requestConfig.model,
         ...generationOptions,
-        capabilityConfig: modelCapabilityConfigFor(config, requestConfig.model),
-        systemPrompt: config.systemPrompt,
+        capabilityConfig: modelCapabilityConfigFor(normalizedConfig, requestConfig.model),
+        systemPrompt: normalizedConfig.systemPrompt,
     };
 }
 

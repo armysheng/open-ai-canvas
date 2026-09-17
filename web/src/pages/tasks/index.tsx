@@ -361,7 +361,7 @@ export default function TasksPage() {
                         source: "tasks-page",
                         mode: values.operation === "compare_versions" ? "workflow" : "video",
                         prompt: buildVideoOperationPrompt(values.operation, values.prompt, operationOptions.find((item) => item.value === values.operation)?.label || "其他视频操作"),
-                        config: values.operation === "compare_versions" ? undefined : backendProviderConfig(requestConfig),
+                        config: values.operation === "compare_versions" ? undefined : backendProviderConfig(requestConfig, "video"),
                         metadata: { videoEditOperation: values.operation },
                     },
                 });
