@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "audio-commit-race";
+type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "video-invalid-metadata" | "video-partial-metadata" | "video-empty-url" | "audio-commit-race";
 type ScenarioResponse<T> = { ok: true; result: T } | { ok: false; error: string };
 
 function runScenario<T>(scenario: Scenario): Promise<T> {
@@ -43,10 +43,28 @@ test("delayed cleanup preserves a same-scope Canvas-only reference added after c
 
 test("generation video and audio materialization cannot race cleanup into a catalog row whose blob is missing", async () => {
     for (const mediaType of ["video", "audio"] as const) {
-        const result = await runScenario<{ kind?: string; storageKey?: string; blobPresent: boolean; generationAssetCount: number }>(`${mediaType}-commit-race`);
+        const result = await runScenario<{ kind?: string; storageKey?: string; blobPresent: boolean; generationAssetCount: number; width?: number; height?: number }>(`${mediaType}-commit-race`);
         expect(result.kind).toBe(mediaType);
         expect(result.storageKey).toMatch(new RegExp(`^generation-${mediaType}:generation-media-commit-race-${mediaType}:`));
         expect(result.blobPresent).toBe(true);
         expect(result.generationAssetCount).toBe(1);
+        if (mediaType === "video") {
+            expect(result.width).toBe(1920);
+            expect(result.height).toBe(1080);
+        }
     }
+});
+
+test("generation video materialization rejects media without decoded dimensions", async () => {
+    await expect(runScenario("video-invalid-metadata")).rejects.toThrow("无法读取视频尺寸");
+});
+
+test("generation video materialization replaces partial provider dimensions with one decoded size", async () => {
+    const result = await runScenario<{ width?: number; height?: number }>("video-partial-metadata");
+    expect(result.width).toBe(1920);
+    expect(result.height).toBe(1080);
+});
+
+test("generation video materialization rejects an empty persisted URL before metadata probing", async () => {
+    await expect(runScenario("video-empty-url")).rejects.toThrow("视频结果资源不可用");
 });

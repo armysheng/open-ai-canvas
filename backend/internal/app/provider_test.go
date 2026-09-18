@@ -277,6 +277,25 @@ func TestRunVideoTaskDownloadsAuthenticatedDeclarativeResult(t *testing.T) {
 	}
 }
 
+func TestFinishProtocolResultIncludesConfiguredVideoDimensions(t *testing.T) {
+	result, err := finishProtocolResult(context.Background(), providerConfig{
+		Size:     "16:9",
+		VQuality: "720p",
+	}, "video", "task-1", &protocol.Result{
+		Videos: []protocol.MediaReference{{DataURL: "data:video/mp4;base64,dmlkZW8=", MIMEType: "video/mp4"}},
+	}, fastVideoPollPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	video, ok := result["video"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("video = %#v", result["video"])
+	}
+	if video["width"] != 1280 || video["height"] != 720 {
+		t.Fatalf("video dimensions = %#v x %#v, want 1280 x 720", video["width"], video["height"])
+	}
+}
+
 func TestSystemChannelIDFromBaseURLSupportsShortAndLegacyProxyPaths(t *testing.T) {
 	for _, test := range []struct{ base, want string }{
 		{base: "/api/channel-1", want: "channel-1"},

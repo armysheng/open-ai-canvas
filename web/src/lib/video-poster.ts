@@ -26,6 +26,71 @@ export function captureVideoPoster(source: string, options: CaptureVideoPosterOp
     return capture;
 }
 
+/** Reads dimensions from decoded video metadata and never substitutes display defaults. */
+export function readVideoMetadata(source: string, options: Pick<CaptureVideoPosterOptions, "signal" | "timeoutMs"> = {}) {
+    const read = captureQueue.then(() => readVideoMetadataNow(source, options));
+    captureQueue = read.then(() => undefined, () => undefined);
+    return read;
+}
+
+function readVideoMetadataNow(source: string, options: Pick<CaptureVideoPosterOptions, "signal" | "timeoutMs">) {
+    return new Promise<Omit<CapturedVideoPoster, "poster">>((resolve, reject) => {
+        const signal = options.signal;
+        if (signal?.aborted) {
+            reject(abortError());
+            return;
+        }
+
+        const video = document.createElement("video");
+        let settled = false;
+        let timeoutId: number | undefined;
+        const cleanup = () => {
+            if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+            signal?.removeEventListener("abort", handleAbort);
+            video.onloadedmetadata = null;
+            video.onerror = null;
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+        };
+        const fail = (error: Error) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(error);
+        };
+        const handleAbort = () => fail(abortError());
+
+        video.onloadedmetadata = () => {
+            const width = video.videoWidth;
+            const height = video.videoHeight;
+            if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+                fail(new Error("无法读取视频尺寸"));
+                return;
+            }
+            if (settled) return;
+            settled = true;
+            const metadata = {
+                width,
+                height,
+                durationMs: Number.isFinite(video.duration) && video.duration > 0 ? Math.round(video.duration * 1000) : undefined,
+                hasAudio: detectVideoAudioTrack(video),
+            };
+            cleanup();
+            resolve(metadata);
+        };
+        video.onerror = () => fail(new Error("无法读取视频元数据"));
+        timeoutId = window.setTimeout(() => fail(new Error("读取视频元数据超时")), options.timeoutMs ?? 15_000);
+        signal?.addEventListener("abort", handleAbort, { once: true });
+        video.preload = "metadata";
+        video.muted = true;
+        video.playsInline = true;
+        if (isCrossOriginHttpUrl(source)) video.crossOrigin = "anonymous";
+        video.src = source;
+        video.load();
+    });
+}
+
 function captureVideoPosterNow(source: string, options: CaptureVideoPosterOptions) {
     return new Promise<CapturedVideoPoster>((resolve, reject) => {
         const signal = options.signal;

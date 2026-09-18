@@ -1,6 +1,7 @@
 import { canvasNodeToAsset, declaredCanvasNodeAssetCategory, findCanvasNodeAsset, type CanvasAssetSource } from "@/lib/canvas/canvas-node-asset";
 import { canvasVideoAssetPreviewUrl } from "@/lib/canvas/canvas-media-preview";
 import { readImageMeta } from "@/lib/image-utils";
+import { readVideoMetadata } from "@/lib/video-poster";
 import { parseBackendGenerationResult, type BackendGenerationResult } from "@/services/api/generation-task";
 import { ApiError } from "@/services/api/request";
 import { linkProjectAsset, moveProjectAsset, updateProjectAssetCategory } from "@/services/api/projects";
@@ -265,6 +266,21 @@ async function storedGenerationMedia(dataUrl: string, effectKey: string, mediaTy
     };
 }
 
+async function completeStoredVideoMetadata(stored: { url: string; storageKey: string; width?: number; height?: number; durationMs?: number; bytes: number; mimeType: string }, signal?: AbortSignal) {
+    if (!stored.url.trim()) throw new Error("视频结果资源不可用");
+    const hasWidth = Number.isFinite(stored.width) && (stored.width || 0) > 0;
+    const hasHeight = Number.isFinite(stored.height) && (stored.height || 0) > 0;
+    if (hasWidth && hasHeight) return stored;
+    const metadata = await readVideoMetadata(stored.url, { signal });
+    throwIfAborted(signal);
+    return {
+        ...stored,
+        width: metadata.width,
+        height: metadata.height,
+        durationMs: stored.durationMs ?? metadata.durationMs,
+    };
+}
+
 async function generationOutputAsset(input: Parameters<MaterializeGenerationTaskOutput>[0], scope: string): Promise<NewAsset> {
     throwIfAborted(input.signal);
     const result = generationTaskResult(input.task);
@@ -304,30 +320,33 @@ async function generationOutputAsset(input: Parameters<MaterializeGenerationTask
     if (input.output.mediaType === "video") {
         const video = result.video;
         if (!video) throw new Error("生成任务缺少视频输出");
-        const stored = video.storageKey
-            ? {
-                  url: await resolveMediaUrl(video.storageKey, video.dataUrl),
-                  storageKey: video.storageKey,
-                  width: video.width || 0,
-                  height: video.height || 0,
-                  durationMs: video.durationMs,
-                  bytes: video.bytes || 0,
-                  mimeType: video.mimeType || "video/mp4",
-              }
-            : await storedGenerationMedia(
-                  video.dataUrl,
-                  input.effectKey,
-                  "video",
-                  {
-                      width: video.width,
-                      height: video.height,
+        const stored = await completeStoredVideoMetadata(
+            video.storageKey
+                ? {
+                      url: await resolveMediaUrl(video.storageKey, video.dataUrl),
+                      storageKey: video.storageKey,
+                      width: video.width || 0,
+                      height: video.height || 0,
                       durationMs: video.durationMs,
-                      bytes: video.bytes,
+                      bytes: video.bytes || 0,
                       mimeType: video.mimeType || "video/mp4",
-                  },
-                  scope,
-                  input.signal,
-              );
+                  }
+                : await storedGenerationMedia(
+                      video.dataUrl,
+                      input.effectKey,
+                      "video",
+                      {
+                          width: video.width,
+                          height: video.height,
+                          durationMs: video.durationMs,
+                          bytes: video.bytes,
+                          mimeType: video.mimeType || "video/mp4",
+                      },
+                      scope,
+                      input.signal,
+                  ),
+            input.signal,
+        );
         if (!stored.url) throw new Error("视频结果资源不可用");
         return {
             kind: "video",

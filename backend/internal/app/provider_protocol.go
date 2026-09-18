@@ -796,6 +796,12 @@ func finishProtocolResult(ctx context.Context, config providerConfig, mode strin
 			return nil, err
 		}
 		item := map[string]interface{}{"dataUrl": dataURL(mimeType, data), "mimeType": mimeType}
+		if mode == "video" {
+			if dimensions, ok := workflowVideoDimensions(config.Size, config.VQuality); ok {
+				item["width"] = dimensions[0]
+				item["height"] = dimensions[1]
+			}
+		}
 		items = append(items, item)
 	}
 	switch mode {

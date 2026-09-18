@@ -4,9 +4,9 @@ import { getActiveUserScope, setActiveUserScope } from "../../src/lib/user-scope
 
 type InstanceHook = (storeName: string, key: string, value: unknown) => Promise<void> | void;
 
-type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "audio-commit-race";
+type Scenario = "image-cleanup" | "scope-cleanup-switch" | "scope-cleanup-late-canvas-reference" | "video-commit-race" | "video-invalid-metadata" | "video-partial-metadata" | "video-empty-url" | "audio-commit-race";
 
-function installStorageHarness() {
+function installStorageHarness(options: { immediateLongTimeout?: boolean } = {}) {
     const originalCreateInstance = localforage.createInstance.bind(localforage);
     const originalGetItem = localforage.getItem.bind(localforage);
     const originalSetItem = localforage.setItem.bind(localforage);
@@ -20,6 +20,7 @@ function installStorageHarness() {
     const instanceValues = new Map<string, Map<string, unknown>>();
     const localStorageValues = new Map<string, string>();
     const scheduled: Promise<void>[] = [];
+    const scheduledTimers = new Map<number, ReturnType<typeof globalThis.setTimeout>>();
     const hooks: { onSet?: InstanceHook } = {};
     const lockTails = new Map<string, Promise<void>>();
 
@@ -72,21 +73,29 @@ function installStorageHarness() {
         configurable: true,
         writable: true,
         value: {
+            location: { href: "https://example.test/" },
             localStorage: {
                 getItem: (key: string) => localStorageValues.get(key) ?? null,
                 setItem: (key: string, value: string) => localStorageValues.set(key, value),
                 removeItem: (key: string) => localStorageValues.delete(key),
             },
             setTimeout: (handler: () => unknown, delay = 0) => {
+                const timerId = scheduled.length + 1;
                 const scheduledRun = new Promise<void>((resolve, reject) => {
-                    realSetTimeout(() => {
-                        Promise.resolve(handler()).then(() => resolve(), reject);
-                    }, delay);
+                    const timer = realSetTimeout(() => {
+                        scheduledTimers.delete(timerId);
+                        Promise.resolve(handler()).then(resolve, reject);
+                    }, options.immediateLongTimeout && delay >= 15_000 ? 0 : delay);
+                    scheduledTimers.set(timerId, timer);
                 });
                 scheduled.push(scheduledRun);
-                return scheduled.length;
+                return timerId;
             },
-            clearTimeout: () => undefined,
+            clearTimeout: (timerId: number) => {
+                const timer = scheduledTimers.get(timerId);
+                if (timer !== undefined) globalThis.clearTimeout(timer);
+                scheduledTimers.delete(timerId);
+            },
             addEventListener: () => undefined,
             removeEventListener: () => undefined,
         },
@@ -134,6 +143,38 @@ function installStorageHarness() {
             else Object.defineProperty(globalThis, "document", { configurable: true, writable: true, value: originalDocument });
         },
     };
+}
+
+function installVideoMetadataDocument(width: number, height: number) {
+    const video = {
+        src: "",
+        videoWidth: width,
+        videoHeight: height,
+        duration: 4,
+        preload: "",
+        muted: false,
+        playsInline: false,
+        crossOrigin: "",
+        onloadedmetadata: null as (() => void) | null,
+        pause: () => undefined,
+        removeAttribute: (name: string) => {
+            if (name === "src") video.src = "";
+        },
+        load: () => {
+            if (!video.src) return;
+            queueMicrotask(() => {
+                video.onloadedmetadata?.();
+            });
+        },
+    };
+    Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        writable: true,
+        value: { createElement: (tagName: string) => {
+            if (tagName !== "video") throw new Error(`Unexpected element ${tagName}`);
+            return video;
+        } } as unknown as Document,
+    });
 }
 
 async function runImageCleanup() {
@@ -305,9 +346,14 @@ async function runScopeCleanupAfterLateCanvasReference() {
     }
 }
 
-async function runMediaCommitRace(mediaType: "video" | "audio") {
+async function runMediaCommitRace(
+    mediaType: "video" | "audio",
+    videoSize = { width: 1920, height: 1080 },
+    reportedVideo: { dataUrl?: string; storageKey?: string; width?: number; height?: number } = {},
+    immediateLongTimeout = false,
+) {
     const previousScope = getActiveUserScope();
-    const harness = installStorageHarness();
+    const harness = installStorageHarness({ immediateLongTimeout });
     const scope = `generation-media-commit-race-${mediaType}`;
     let releaseMediaWrite!: () => void;
     const mediaWriteGate = new Promise<void>((resolve) => {
@@ -328,6 +374,7 @@ async function runMediaCommitRace(mediaType: "video" | "audio") {
 
     try {
         setActiveUserScope(scope);
+        if (mediaType === "video") installVideoMetadataDocument(videoSize.width, videoSize.height);
         const { materializeGenerationTaskAssets } = await import("../../src/services/project-asset-sync.ts?generation-media-commit-race-worker");
         const { useAssetStore } = await import("../../src/stores/use-asset-store");
         await import("../../src/stores/canvas/use-canvas-store");
@@ -346,9 +393,8 @@ async function runMediaCommitRace(mediaType: "video" | "audio") {
                           mode: "video",
                           video: {
                               dataUrl: "data:video/mp4;base64,AAAA",
-                              width: 16,
-                              height: 9,
                               mimeType: "video/mp4",
+                              ...reportedVideo,
                           },
                       }
                     : {
@@ -382,9 +428,10 @@ async function runMediaCommitRace(mediaType: "video" | "audio") {
         const assetId = materialized.outputs?.[0]?.materializedAssetId;
         const asset = useAssetStore.getState().assets.find((candidate) => candidate.id === assetId);
         const storageKey = asset?.kind === "video" || asset?.kind === "audio" ? asset.data.storageKey : undefined;
+        const dimensions = asset?.kind === "video" ? { width: asset.data.width, height: asset.data.height } : {};
         const blobPresent = storageKey ? (await fileStorage.getMediaBlob(storageKey)) instanceof Blob : false;
         const generationAssetCount = useAssetStore.getState().assets.filter((candidate) => candidate.metadata?.generationEffectKey === `materialize:${task.id}:0`).length;
-        return { kind: asset?.kind, storageKey, blobPresent, generationAssetCount };
+        return { kind: asset?.kind, storageKey, blobPresent, generationAssetCount, ...dimensions };
     } finally {
         releaseMediaWrite();
         setActiveUserScope(previousScope);
@@ -401,7 +448,13 @@ self.onmessage = async (event: MessageEvent<Scenario>) => {
                   ? await runScopeCleanupAfterSwitch()
                   : event.data === "scope-cleanup-late-canvas-reference"
                     ? await runScopeCleanupAfterLateCanvasReference()
-                    : await runMediaCommitRace(event.data === "audio-commit-race" ? "audio" : "video");
+                    : event.data === "video-invalid-metadata"
+                      ? await runMediaCommitRace("video", { width: 0, height: 0 })
+                      : event.data === "video-partial-metadata"
+                        ? await runMediaCommitRace("video", { width: 1920, height: 1080 }, { width: 640 })
+                        : event.data === "video-empty-url"
+                          ? await runMediaCommitRace("video", { width: 1920, height: 1080 }, { dataUrl: "", storageKey: "missing" }, true)
+                      : await runMediaCommitRace(event.data === "audio-commit-race" ? "audio" : "video");
         self.postMessage({ ok: true, result });
     } catch (error) {
         self.postMessage({ ok: false, error: error instanceof Error ? `${error.name}: ${error.message}` : String(error) });
