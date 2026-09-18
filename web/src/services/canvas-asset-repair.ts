@@ -1,4 +1,4 @@
-import { canvasNodeToAsset } from "@/lib/canvas/canvas-node-asset";
+import { canvasNodeToAsset, hasPositiveCanvasNodeAssetDimensions } from "@/lib/canvas/canvas-node-asset";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
@@ -43,6 +43,9 @@ export function repairMissingCanvasAssets(projectIds?: Set<string>, partialAsset
             }
         }
         const repaired = repairProject(project, knownAssetIds, assetIdByStorageKey, storageKeyByAssetId, (node) => {
+            // 历史视频节点可能只保存了资源地址，展示尺寸却是 0；先跳过，等待媒体实际加载后再补素材，
+            // 避免登录或自动同步把不满足素材合同的记录写入 store。
+            if (!hasPositiveCanvasNodeAssetDimensions(node)) return undefined;
             const input = canvasNodeToAsset(node, { canvasId: project.id, source: "canvas-upload" });
             if (!input) return undefined;
             const assetId = useAssetStore.getState().addAsset(input);

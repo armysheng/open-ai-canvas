@@ -11,6 +11,19 @@ type CanvasNodeAssetOptions = {
     taskId?: string;
 };
 
+/** Returns the dimensions that will be persisted for image/video canvas assets. */
+export function canvasNodeAssetDimensions(node: CanvasNodeData) {
+    const width = positiveDimension(node.metadata?.naturalWidth) ? Number(node.metadata?.naturalWidth) : Number(node.width);
+    const height = positiveDimension(node.metadata?.naturalHeight) ? Number(node.metadata?.naturalHeight) : Number(node.height);
+    return { width, height };
+}
+
+export function hasPositiveCanvasNodeAssetDimensions(node: CanvasNodeData) {
+    if (node.type !== CanvasNodeType.Image && node.type !== CanvasNodeType.Video) return true;
+    const { width, height } = canvasNodeAssetDimensions(node);
+    return positiveDimension(width) && positiveDimension(height);
+}
+
 export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAssetOptions): NewAsset | null {
     const content = node.metadata?.content?.trim() || "";
     const storageKey = node.metadata?.storageKey?.trim() || undefined;
@@ -21,6 +34,8 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
     if (node.type === CanvasNodeType.Text && !content) return null;
     if (isMedia && !content && !storageKey) return null;
     if (!isMedia && node.type !== CanvasNodeType.Text) return null;
+    if (!hasPositiveCanvasNodeAssetDimensions(node)) return null;
+    const dimensions = canvasNodeAssetDimensions(node);
     const title = node.metadata?.prompt?.slice(0, 24) || node.title || canvasAssetFallbackTitle(node.type);
     const metadata = {
         source: options.source,
@@ -51,8 +66,8 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
             data: {
                 dataUrl,
                 storageKey,
-                width: node.metadata?.naturalWidth || node.width,
-                height: node.metadata?.naturalHeight || node.height,
+                width: dimensions.width,
+                height: dimensions.height,
                 bytes: node.metadata?.bytes || getDataUrlByteSize(dataUrl),
                 mimeType: node.metadata?.mimeType || "image/png",
             },
@@ -65,8 +80,8 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
             data: {
                 url: content,
                 storageKey,
-                width: node.metadata?.naturalWidth || node.width,
-                height: node.metadata?.naturalHeight || node.height,
+                width: dimensions.width,
+                height: dimensions.height,
                 durationMs: node.metadata?.durationMs,
                 hasAudio: node.metadata?.hasAudio,
                 bytes: node.metadata?.bytes || 0,
@@ -88,6 +103,10 @@ export function canvasNodeToAsset(node: CanvasNodeData, options: CanvasNodeAsset
         };
     }
     return null;
+}
+
+function positiveDimension(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 export function findCanvasNodeAsset(assets: Asset[], node: CanvasNodeData, canvasId: string, taskId?: string) {
